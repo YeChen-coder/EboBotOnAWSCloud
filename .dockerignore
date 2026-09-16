@@ -1,0 +1,12 @@
+*
+!cloud/
+!cloud/*.py
+!cloud/*.Dockerfile
+!realtime-assistant/
+!realtime-assistant/app.py
+!realtime-assistant/requirements.txt
+!ha-enabot/
+!ha-enabot/ebo/
+!ha-enabot/ebo/*.py
+!ha-enabot/ebo/config.yaml
+!ha-enabot/ebo/run.sh

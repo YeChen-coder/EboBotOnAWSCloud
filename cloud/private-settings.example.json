@@ -1,0 +1,7 @@
+{
+  "region": "ca-central-1",
+  "account_id": "123456789012",
+  "efs_id": "fs-0123456789abcdef0",
+  "ebo_app_id": "your-public-vendor-app-id",
+  "source_root": "C:\\path\\to\\ebo-ai-home"
+}

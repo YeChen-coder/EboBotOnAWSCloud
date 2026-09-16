@@ -1,0 +1,817 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EBO Fargate lab: two containers, private APIs, persistent storage, telemetry",
+  "Parameters": {
+    "EngineImage": {
+      "Type": "String"
+    },
+    "AssistantImage": {
+      "Type": "String"
+    },
+    "DesiredCount": {
+      "Type": "Number",
+      "Default": 0,
+      "AllowedValues": [
+        0,
+        1
+      ]
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.87.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ebo-cloud-lab"
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {}
+    },
+    "GatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "RouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "InternetRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      },
+      "DependsOn": "GatewayAttachment"
+    },
+    "Subnet0": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.87.0.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        }
+      }
+    },
+    "RouteAssociation0": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Subnet0"
+        },
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        }
+      }
+    },
+    "Subnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.87.1.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::GetAZs": ""
+            }
+          ]
+        }
+      }
+    },
+    "RouteAssociation1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Subnet1"
+        },
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        }
+      }
+    },
+    "TaskSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "EBO task: no inbound access",
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "-1",
+            "CidrIp": "0.0.0.0/0",
+            "Description": "Enabot Agora OpenAI and AWS APIs"
+          }
+        ]
+      }
+    },
+    "StorageSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "GroupDescription": "NFS only from EBO tasks",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 2049,
+            "ToPort": 2049,
+            "SourceSecurityGroupId": {
+              "Ref": "TaskSecurityGroup"
+            }
+          }
+        ]
+      }
+    },
+    "FileSystem": {
+      "Type": "AWS::EFS::FileSystem",
+      "Properties": {
+        "Encrypted": true,
+        "PerformanceMode": "generalPurpose",
+        "ThroughputMode": "bursting",
+        "BackupPolicy": {
+          "Status": "ENABLED"
+        },
+        "FileSystemPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "elasticfilesystem:*",
+              "Resource": "*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "MountTarget0": {
+      "Type": "AWS::EFS::MountTarget",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "FileSystem"
+        },
+        "SubnetId": {
+          "Ref": "Subnet0"
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "StorageSecurityGroup"
+          }
+        ]
+      }
+    },
+    "MountTarget1": {
+      "Type": "AWS::EFS::MountTarget",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "FileSystem"
+        },
+        "SubnetId": {
+          "Ref": "Subnet1"
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "StorageSecurityGroup"
+          }
+        ]
+      }
+    },
+    "EngineAccessPoint": {
+      "Type": "AWS::EFS::AccessPoint",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "FileSystem"
+        },
+        "PosixUser": {
+          "Uid": "1000",
+          "Gid": "1000"
+        },
+        "RootDirectory": {
+          "Path": "/engine",
+          "CreationInfo": {
+            "OwnerUid": "1000",
+            "OwnerGid": "1000",
+            "Permissions": "0750"
+          }
+        }
+      }
+    },
+    "EngineRepository": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "RepositoryName": "ebo-cloud/engine",
+        "ImageTagMutability": "IMMUTABLE",
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        },
+        "EmptyOnDelete": false
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "EngineSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": "ebo-cloud/engine",
+        "Description": "EBO cloud runtime configuration",
+        "SecretString": "{\"bootstrap_pending\":true}"
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "EngineLog": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/ebo-cloud/engine",
+        "RetentionInDays": 14
+      },
+      "DeletionPolicy": "Retain"
+    },
+    "AssistantAccessPoint": {
+      "Type": "AWS::EFS::AccessPoint",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "FileSystem"
+        },
+        "PosixUser": {
+          "Uid": "1000",
+          "Gid": "1000"
+        },
+        "RootDirectory": {
+          "Path": "/assistant",
+          "CreationInfo": {
+            "OwnerUid": "1000",
+            "OwnerGid": "1000",
+            "Permissions": "0750"
+          }
+        }
+      }
+    },
+    "AssistantRepository": {
+      "Type": "AWS::ECR::Repository",
+      "Properties": {
+        "RepositoryName": "ebo-cloud/assistant",
+        "ImageTagMutability": "IMMUTABLE",
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        },
+        "EmptyOnDelete": false
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "AssistantSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": "ebo-cloud/assistant",
+        "Description": "EBO cloud runtime configuration",
+        "SecretString": "{\"bootstrap_pending\":true}"
+      },
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "AssistantLog": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/ebo-cloud/assistant",
+        "RetentionInDays": 14
+      },
+      "DeletionPolicy": "Retain"
+    },
+    "ExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "ReadEboConfiguration",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "EngineRepository",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "AssistantRepository",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "EngineLog",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "AssistantLog",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": [
+                    {
+                      "Ref": "EngineSecret"
+                    },
+                    {
+                      "Ref": "AssistantSecret"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "TaskRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "EboStorage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "elasticfilesystem:ClientMount",
+                    "elasticfilesystem:ClientWrite"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "FileSystem",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "elasticfilesystem:AccessPointArn": [
+                        {
+                          "Fn::GetAtt": [
+                            "EngineAccessPoint",
+                            "Arn"
+                          ]
+                        },
+                        {
+                          "Fn::GetAtt": [
+                            "AssistantAccessPoint",
+                            "Arn"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Cluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": "ebo-cloud-lab",
+        "ClusterSettings": [
+          {
+            "Name": "containerInsights",
+            "Value": "enhanced"
+          }
+        ]
+      }
+    },
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": "ebo-cloud-lab",
+        "Cpu": "1024",
+        "Memory": "2048",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": [
+          "FARGATE"
+        ],
+        "RuntimePlatform": {
+          "CpuArchitecture": "X86_64",
+          "OperatingSystemFamily": "LINUX"
+        },
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "ExecutionRole",
+            "Arn"
+          ]
+        },
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "TaskRole",
+            "Arn"
+          ]
+        },
+        "ContainerDefinitions": [
+          {
+            "Name": "ebo-engine",
+            "Image": {
+              "Ref": "EngineImage"
+            },
+            "Essential": true,
+            "Cpu": 512,
+            "MemoryReservation": 1024,
+            "LinuxParameters": {
+              "InitProcessEnabled": true
+            },
+            "StopTimeout": 60,
+            "Environment": [
+              {
+                "Name": "EBO_CLOUD_SERVICE",
+                "Value": "ebo-engine"
+              },
+              {
+                "Name": "EBO_CLOUD_ENV",
+                "Value": "lab"
+              },
+              {
+                "Name": "PYTHONUNBUFFERED",
+                "Value": "1"
+              },
+              {
+                "Name": "EBO_CLOUD",
+                "Value": "1"
+              }
+            ],
+            "Secrets": [
+              {
+                "Name": "EBO_BOOTSTRAP_JSON",
+                "ValueFrom": {
+                  "Ref": "EngineSecret"
+                }
+              }
+            ],
+            "MountPoints": [
+              {
+                "SourceVolume": "EngineData",
+                "ContainerPath": "/data",
+                "ReadOnly": false
+              }
+            ],
+            "HealthCheck": {
+              "Command": [
+                "CMD",
+                "python",
+                "/cloud/healthcheck.py",
+                "ebo-engine"
+              ],
+              "Interval": 30,
+              "Timeout": 5,
+              "Retries": 3,
+              "StartPeriod": 120
+            },
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "EngineLog"
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": "ebo-engine",
+                "mode": "non-blocking",
+                "max-buffer-size": "10m"
+              }
+            }
+          },
+          {
+            "Name": "realtime-assistant",
+            "Image": {
+              "Ref": "AssistantImage"
+            },
+            "Essential": true,
+            "Cpu": 512,
+            "MemoryReservation": 768,
+            "LinuxParameters": {
+              "InitProcessEnabled": true
+            },
+            "StopTimeout": 60,
+            "Environment": [
+              {
+                "Name": "EBO_CLOUD_SERVICE",
+                "Value": "realtime-assistant"
+              },
+              {
+                "Name": "EBO_CLOUD_ENV",
+                "Value": "lab"
+              },
+              {
+                "Name": "PYTHONUNBUFFERED",
+                "Value": "1"
+              },
+              {
+                "Name": "EBO_CLOUD",
+                "Value": "1"
+              }
+            ],
+            "Secrets": [
+              {
+                "Name": "EBO_BOOTSTRAP_JSON",
+                "ValueFrom": {
+                  "Ref": "AssistantSecret"
+                }
+              }
+            ],
+            "MountPoints": [
+              {
+                "SourceVolume": "AssistantData",
+                "ContainerPath": "/data",
+                "ReadOnly": false
+              }
+            ],
+            "HealthCheck": {
+              "Command": [
+                "CMD",
+                "python",
+                "/cloud/healthcheck.py",
+                "realtime-assistant"
+              ],
+              "Interval": 30,
+              "Timeout": 5,
+              "Retries": 3,
+              "StartPeriod": 120
+            },
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "AssistantLog"
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": "realtime-assistant",
+                "mode": "non-blocking",
+                "max-buffer-size": "10m"
+              }
+            }
+          }
+        ],
+        "Volumes": [
+          {
+            "Name": "EngineData",
+            "EFSVolumeConfiguration": {
+              "FilesystemId": {
+                "Ref": "FileSystem"
+              },
+              "TransitEncryption": "ENABLED",
+              "AuthorizationConfig": {
+                "AccessPointId": {
+                  "Ref": "EngineAccessPoint"
+                },
+                "IAM": "ENABLED"
+              }
+            }
+          },
+          {
+            "Name": "AssistantData",
+            "EFSVolumeConfiguration": {
+              "FilesystemId": {
+                "Ref": "FileSystem"
+              },
+              "TransitEncryption": "ENABLED",
+              "AuthorizationConfig": {
+                "AccessPointId": {
+                  "Ref": "AssistantAccessPoint"
+                },
+                "IAM": "ENABLED"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "Service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "ServiceName": "ebo-cloud-lab",
+        "Cluster": {
+          "Ref": "Cluster"
+        },
+        "TaskDefinition": {
+          "Ref": "TaskDefinition"
+        },
+        "DesiredCount": {
+          "Ref": "DesiredCount"
+        },
+        "LaunchType": "FARGATE",
+        "PlatformVersion": "1.4.0",
+        "EnableExecuteCommand": false,
+        "DeploymentConfiguration": {
+          "MinimumHealthyPercent": 0,
+          "MaximumPercent": 100,
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true
+          }
+        },
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "ENABLED",
+            "Subnets": [
+              {
+                "Ref": "Subnet0"
+              },
+              {
+                "Ref": "Subnet1"
+              }
+            ],
+            "SecurityGroups": [
+              {
+                "Ref": "TaskSecurityGroup"
+              }
+            ]
+          }
+        }
+      },
+      "DependsOn": [
+        "MountTarget0",
+        "MountTarget1",
+        "InternetRoute"
+      ]
+    }
+  },
+  "Outputs": {
+    "Cluster": {
+      "Value": {
+        "Ref": "Cluster"
+      }
+    },
+    "Service": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Service",
+          "Name"
+        ]
+      }
+    },
+    "TaskDefinition": {
+      "Value": {
+        "Ref": "TaskDefinition"
+      }
+    },
+    "EngineRepository": {
+      "Value": {
+        "Fn::GetAtt": [
+          "EngineRepository",
+          "RepositoryUri"
+        ]
+      }
+    },
+    "AssistantRepository": {
+      "Value": {
+        "Fn::GetAtt": [
+          "AssistantRepository",
+          "RepositoryUri"
+        ]
+      }
+    },
+    "EngineSecret": {
+      "Value": {
+        "Ref": "EngineSecret"
+      }
+    },
+    "AssistantSecret": {
+      "Value": {
+        "Ref": "AssistantSecret"
+      }
+    },
+    "FileSystem": {
+      "Value": {
+        "Ref": "FileSystem"
+      }
+    }
+  }
+}
