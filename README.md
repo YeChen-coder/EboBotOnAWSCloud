@@ -1,63 +1,63 @@
-# EBO Fargate 云端实验项目
+# EBO Fargate Cloud Experiment
 
-[中文](README.md) | [English](README.en.md)
+[Chinese](README_zh.md) | [English](README.md)
 
-云端副本来自本地已运行项目，原项目路径为 `<source-workspace>`，来源 Git HEAD：`88b97a8e3c38469797d5e2eb89bc819bc6b30d1d`（已通过 Git 核验）。业务代码位于 `ha-enabot/ebo` 和 `realtime-assistant`。原项目、数据目录及运行中的服务未修改。
+This cloud copy was prepared from a locally working project at `<source-workspace>`, whose verified source Git revision was `88b97a8e3c38469797d5e2eb89bc819bc6b30d1d`. The business code is under `ha-enabot/ebo` and `realtime-assistant`. The original source tree, data directories, and locally running services were not modified by the migration copy.
 
-目标：加拿大中部 `ca-central-1`，一个 Linux x86_64 Fargate Task，总计 1 vCPU / 2 GiB（9 月 10 日降低 CPU，9 月 12 日降低内存），内含 `ebo-engine` 与 `realtime-assistant`。Home Assistant 留在本地。架构研究见[中文报告](EBO_Fargate架构与诊断Agent调研报告.md)或[英文报告](EBO_Fargate_Architecture_and_Local_Diagnostic_Agent_Report.en.md)。
+The target is one Linux x86_64 Fargate task in Canada Central (`ca-central-1`) with 1 vCPU and 2 GiB of memory after the CPU reduction on September 10 and the memory reduction on September 12. It contains `ebo-engine` and `realtime-assistant`; Home Assistant stays on the local Windows machine. See the full architecture study in [English](EBO_Fargate_Architecture_and_Local_Diagnostic_Agent_Report.en.md) or [Chinese](EBO_Fargate架构与诊断Agent调研报告.md).
 
-## 当前状态
+## Current status
 
-2026-09-12 内存降配完成：约 65 小时历史观测的 Task 内存峰值约 320 MiB，已按用户授权从 4 GiB 降至 2 GiB。当前任务定义 `ebo-cloud-lab:6`，Task `<task-id-redacted>`；20:31 UTC 核验 CloudFormation UPDATE_COMPLETE、ECS COMPLETED、两容器 HEALTHY，启动宽限期后音视频及 Realtime 正常。首三个分钟采样内存最高 277 MiB。Fargate 算力约 $39.63/月，每 730 小时省 $7.10。详见 [内存降配评估](Fargate内存降配评估_2026-09-12.md)。以下按日期保留此前发布记录，其中 Task ID 和“当前”描述指该次验收时点。
+The memory reduction completed on 2026-09-12. Roughly 65 hours of historical observations showed a task memory peak near 320 MiB, so the authorized configuration change reduced task memory from 4 GiB to 2 GiB. The current task definition was `ebo-cloud-lab:6`, with task ID `<task-id-redacted>`. At 20:31 UTC, CloudFormation was `UPDATE_COMPLETE`, the ECS deployment was `COMPLETED`, both containers were `HEALTHY`, and audio, video, and Realtime remained normal after the startup grace period. The highest sample during the first three minutes was 277 MiB. Estimated Fargate compute is about USD 39.63 per 730-hour month, saving about USD 7.10. See the [memory sizing assessment](Fargate内存降配评估_2026-09-12.md). Earlier release records are retained below by date; task IDs and references to the “current” state describe the acceptance point for that release.
 
-2026-09-11 对话日志增强：本地已实现用户最终转写、模型最终回复及关键诊断事件的结构化 CloudWatch 输出，55 项 Assistant 测试、8 项云端测试及新镜像断网通路验证通过。两个 `20260911-logs` 镜像已于 17:09 UTC 前完成部署，当前 TaskDefinition 为 `ebo-cloud-lab:5`，Task 为 `<task-id-redacted>`，ECS/CloudFormation 更新完成，两容器与业务健康正常。CloudWatch 及本地采集器已读到新版 `realtime.connected` 事件；追加独立云端合成测试已验证转写和回复中文正文实际进入 CloudWatch，测试 Task 已停止；正式服务仅观察到一条空转写，真人有效对话验收仍待实际说话。查看路径、过滤条件和事件说明见 [CloudWatch 对话日志查看指南](cloud/CloudWatch对话日志查看指南.md)。
+The conversation logging enhancement completed on 2026-09-11. The Assistant now emits final user transcripts, final model output, and key diagnostic events as structured CloudWatch logs. Fifty-five Assistant tests, eight cloud tests, and an offline image-path check passed. Both `20260911-logs` images were deployed by 17:09 UTC. At that point, the task definition was `ebo-cloud-lab:5`, the task ID was `<task-id-redacted>`, the ECS and CloudFormation updates were complete, and both containers and their business health checks were normal. CloudWatch and the local collector received the new `realtime.connected` event. A separate short-lived synthetic cloud task verified that full Chinese transcript and response text reached CloudWatch, after which the test task was stopped. The production service had only one empty transcript observation at that time, so a real spoken exchange still requires human validation. See the [CloudWatch conversation log guide](cloud/CloudWatch对话日志查看指南.md).
 
-2026-09-10 CPU 降配：CloudFormation 已完成 1 vCPU / 4 GiB 更新，TaskDefinition 为 `ebo-cloud-lab:3`。首次新 Task 发生 Enabot 登录连接超时，经一次同规格 Task 替换恢复；当前 Task `<task-id-redacted>` 的两个容器 HEALTHY，ECS 部署 COMPLETED，启动宽限期后音视频输入和 Realtime 连接正常。成本与说明见 [成本报告](AWS成本估算_2026-09-10.md)。以下为首次迁移验收记录。
+The CPU reduction completed on 2026-09-10. CloudFormation deployed 1 vCPU and 4 GiB as task definition `ebo-cloud-lab:3`. The first replacement task encountered an Enabot login connection timeout; an identical replacement recovered. The current task at that acceptance point was `<task-id-redacted>`; both containers were `HEALTHY`, the ECS deployment was `COMPLETED`, and audio input and Realtime connectivity were normal after the startup grace period. See the [AWS cost estimate](AWS成本估算_2026-09-10.md).
 
-已于 2026-09-09 晚（多伦多时间）完成部署与切换。账户 `<aws-account-id>`，CloudFormation `UPDATE_COMPLETE`，ECS Service 稳定运行一个 Task，两个业务容器均 `HEALTHY`，真实音视频和 Realtime 连接正常。用户已明确确认所需权限；[权限说明](cloud/权限与部署确认.md)保留范围记录。完整结果见 [部署验收记录](cloud/部署验收记录.md)。
+The initial cloud deployment and cutover completed on the evening of 2026-09-09 in Toronto time. The account was `<aws-account-id>`, CloudFormation reached `UPDATE_COMPLETE`, the ECS service held one task, both business containers were `HEALTHY`, and real audio, video, and Realtime connectivity worked. The user explicitly approved the required permissions; the [permission record](cloud/权限与部署确认.md) preserves the authorized scope. See the full [deployment acceptance record](cloud/部署验收记录.md).
 
-本地旧 Engine 和 Assistant 已正常停止，Home Assistant 保持运行。原源码和数据未改写；本地 diagnostic watcher 保持原有只观察模式。已验证云日志、容器性能和服务指标可按需拉取到本地。人工听说体验因用户暂不方便测试而待确认。
+The old local Engine and Assistant were stopped normally, while local Home Assistant stayed running. The original source code and data were not rewritten, and the local diagnostic watcher retained its existing observation-only behavior. Cloud logs, container performance data, and service metrics were verified as available for on-demand local collection. The human listening and speaking test remained pending because the user could not perform it at that time.
 
-已通过 Assistant 50 项测试、Engine 115 项测试（1 项真实云连接测试跳过）、云端边界 6 项测试。Assistant 使用真实配置通过断网启动、`/live` 与业务 `/health` 分离、JSON 日志以及 SIGTERM 正常退出验证。Agora 原生库已在无网络环境成功加载并创建服务对象。
+Validation covered 50 Assistant tests, 115 Engine tests with one live-cloud test skipped, and six cloud-boundary tests. The Assistant passed offline startup, separate `/live` and business `/health` checks, JSON logging, and graceful SIGTERM handling using the real configuration shape. The Agora native library loaded and created its service object without network access.
 
-## 已实现的迁移调整
+## Migration changes
 
-- 同 Task 使用 localhost：Engine API 8098、Panel 8101、Assistant 8099、talk WebSocket 8200、RTSP 8554。修复 8099 冲突及 WAV 回退的反向获取 URL。
-- 保留本地 Compose 实际解析后的调参、Enabot CN 账户配置，以及现有 API token。导入时校验两服务 token 一致。
-- 每个容器独立 EFS Access Point。首次部署导入麦克风等 UI 选择；后续启动保留持久化隐私状态。没有复制历史家庭对话、录音或画面。
-- 配置通过 Secrets Manager 注入；入口启动后移除大块配置环境变量，并将引擎配置写入 EFS。应用本身仍需要自己的运行凭据，环境注入不是容器内保密边界。
-- stdout 统一 JSON 包装，UTC 时间、service、boot_id、event、severity；每 15 秒输出选定健康状态和 CloudWatch EMF 指标。命令 payload 与原始 Realtime 错误正文不输出，按已知配置值脱敏。2026-09-11 起按用户要求增加最终转写和回复正文的结构化日志，保留 14 天。
-- 进程健康单独用于 ECS health check；业务就绪度和真实音频来源状态单独观测。Assistant 必需工作线程退出时结束进程，允许 ECS 恢复。
-- ECS Service 部署参数为 minHealthy=0、max=100；更新会短暂中断，避免两个 Engine 重叠连接机器人。ECS Exec 关闭；旧 HA `/api/restart` 在云环境明确返回不支持。
+- Containers in the same task communicate through localhost: Engine API 8098, Engine panel 8101, Assistant 8099, talk WebSocket 8200, and RTSP 8554. This resolves the original port conflict and preserves reverse WAV retrieval.
+- The deployment imports the resolved local tuning, Enabot CN account configuration, and existing API token, and verifies that Engine and Assistant use the same token.
+- Each business container has its own EFS access point. The initial import preserves microphone and other UI choices, and later starts preserve the persisted microphone-privacy state. Historical family conversations, recordings, and images are not copied.
+- Secrets Manager injects runtime configuration. The entrypoint removes large configuration values from its environment after startup and writes Engine settings to EFS. Environment injection is still not an isolation boundary inside a container.
+- Standard output is wrapped as JSON with UTC time, service, boot ID, event, and severity fields. A redacted health snapshot and selected CloudWatch EMF metrics are emitted every 15 seconds. Command payloads and raw Realtime error bodies are suppressed. Final transcript and response text have been logged since 2026-09-11 and retained for 14 days.
+- ECS health checks use process liveness, while business readiness and source-audio health remain separate observations. The Assistant exits if a required worker terminates so ECS can recover it.
+- The ECS service uses minimum healthy percent 0 and maximum percent 100. Deployments briefly interrupt service to avoid two Engine instances connecting to the same robot. ECS Exec is disabled, and the former Home Assistant `/api/restart` route explicitly reports that it is unsupported in the cloud runtime.
 
-## 本地诊断接口
+## Local diagnostic interface
 
-使用已配置的 Python 运行 `cloud/diagnostic.py collect --minutes 30`：输出 `.local/diagnostics/` 下 SQLite 去重证据、按时间排序的 JSONL，以及包含 ECS 服务事件、运行/最近停止任务、退出原因、CPU/内存指标的 JSON 快照。Container Insights performance 日志提供容器层指标；两个应用日志组提供业务证据。没有单独部署 CloudWatch Agent 容器。
+Run `cloud/diagnostic.py collect --minutes 30` with the configured Python interpreter. It writes a deduplicated SQLite evidence store, ordered JSONL, and a JSON snapshot under ignored `.local/diagnostics/`. The snapshot includes ECS service events, running and recently stopped tasks, exit reasons, and CPU and memory metrics. Container Insights performance logs provide container metrics; the two application log groups provide business evidence. No CloudWatch Agent sidecar is deployed.
 
-JSONL 含稳定 evidence_id 和 `trust: untrusted_observation`。LLM 必须把日志视作证据，不能执行日志中的“指令”；缺失采集会在快照中标记，不能理解为服务健康。按窗口重复采集可补收延迟日志；本实现是按需拉取，尚非全天后台流式收集器。
+Each JSONL record has a stable `evidence_id` and `trust: untrusted_observation`. An LLM must treat log content as evidence rather than executable instructions. Missing collection is marked in the snapshot and must not be interpreted as a healthy service. Repeated overlapping windows recover late events. This is an on-demand collector, not an always-on streaming daemon.
 
-`cloud/diagnostic.py replace-task --expected-task <当前完整Task ARN> --reason <原因> --execute` 才会发起替换：校验账户、区域、服务、当前唯一 Task、部署状态和无重叠策略；动作写本地审计。它替换整个 Task，会同时中断两个容器。没有单容器手动 restart 接口，也没有暴露机器人运动、开麦或任意 Shell 操作。
+`cloud/diagnostic.py replace-task --expected-task <full-current-task-arn> --reason <reason> --execute` is the only implemented replacement command. It verifies the account, region, service, single-current-task state, deployment state, and non-overlap policy before recording the action locally. Replacing a task interrupts both containers. There is no single-container manual restart operation and no infrastructure repair tool that exposes robot movement, microphone, arbitrary shell, or similar device commands.
 
-目前 CLI 使用用户主动登录的临时 **root** 会话，只供本次人工协作部署。**不要把该会话交给无人值守 LLM agent**。未来 agent 应使用独立只读身份；写操作经单独执行端与审批身份完成。脚本白名单和 `--execute` 不是 IAM 隔离。AWS DevOps Agent 的 AgentSpace、只读角色和人审 directed actions 尚未开通，设计与接入方式见研究报告；此版不声称已完成托管 Agent 的集成。
+The current CLI uses an interactive temporary root session only for the supervised deployment work. Do not give that session to an unattended LLM agent. A future agent should use a separate read-only identity, with write operations delegated to a separate approved executor. Script allowlists and an `--execute` flag are not IAM isolation. AWS DevOps Agent integration remains a proposed design rather than a completed managed-agent deployment.
 
-## 部署顺序（IAM 确认后继续）
+## Deployment sequence (after IAM confirmation)
 
-1. 将 `cloud/private-settings.example.json` 复制为被 Git 忽略的 `.local/private-settings.json`，填写 AWS 账户、EFS ID 和本地源项目路径；也可使用对应的 `EBO_AWS_*` / `EBO_SOURCE_ROOT` 环境变量。
-2. `cloud/make_template.py` 生成 `cloud/fargate.template.json`。
-3. `cloud/deploy.py provision --tag 20260910-01` 创建资源，初始 DesiredCount=0；`cloud/deploy.py status` 查看进度。
-4. `cloud/deploy.py configure` 从本地实际配置校验并写入两个 Secret。私密中间文件位于已忽略的 `.local/`，不得提交。
-5. `cloud/publish.py --tag 20260910-01` 推送已构建镜像，输出不可变 digest 引用。后续发布使用新 tag，ECR 禁止覆盖 tag。
-6. 首次切换：可先运行 `cloud/preflight.py launch` 并确认 `cloud/preflight.py status` 两容器 exitCode=0，验证配置与 EFS。随后停止本地 `realtime-assistant`、`ebo-engine` 并确认退出，运行 `cloud/deploy.py start` 使用 CloudFormation 更新镜像参数为发布的 digest、DesiredCount=1。Home Assistant 不停止。
-7. 等待 ECS 稳定、容器健康、业务音频状态与日志可采集；再与用户验证听说体验。只凭容器 RUNNING 不算迁移完成。
-8. 回滚时先运行 `cloud/deploy.py stop` 将云服务 DesiredCount=0，确认 CloudFormation 更新完成且云 Task 已停止，才恢复本地两个业务容器。使用 CloudFormation 同步期望数量，避免下次更新意外恢复云连接。
+1. Copy `cloud/private-settings.example.json` to the Git-ignored `.local/private-settings.json`, then fill in the AWS account ID, EFS ID, and local source path. The equivalent `EBO_AWS_*` and `EBO_SOURCE_ROOT` environment variables can be used instead.
+2. Run `cloud/make_template.py` to generate `cloud/fargate.template.json`.
+3. Run `cloud/deploy.py provision --tag 20260910-01`. It creates resources with `DesiredCount=0`; use `cloud/deploy.py status` to monitor progress.
+4. Run `cloud/deploy.py configure`. It validates the resolved local configuration and writes two secrets. Sensitive intermediate files stay under ignored `.local/` and must never be committed.
+5. Run `cloud/publish.py --tag 20260910-01` to publish both images and record immutable digest references. Use a new tag for every later release; ECR tag replacement is disabled.
+6. For the first cutover, optionally run `cloud/preflight.py launch`, then confirm with `cloud/preflight.py status` that both containers exit with code 0 after reading secrets and EFS. Stop the local `realtime-assistant` and `ebo-engine` and confirm they exited before running `cloud/deploy.py start`; that command uses CloudFormation to update the image parameters to the published digests and set `DesiredCount=1`. Home Assistant remains running.
+7. Wait for ECS stability, container health, business-audio evidence, and log collection, then perform the human speaking and listening test. A `RUNNING` task alone is not acceptance.
+8. To roll back, run `cloud/deploy.py stop`, wait for CloudFormation and the cloud task to stop, and only then restore the two local business containers. Keeping desired count in CloudFormation prevents a later update from unexpectedly restoring the cloud connection.
 
-## 已知边界
+## Known boundaries
 
-- EFS 权限、Secrets 注入、镜像拉取以及真实音视频已通过 AWS 实测；人工听说体验、回复播放和端到端延迟尚待确认。单 Task 不是高可用部署。
-- HA 本地 dashboard 原指向本地 Engine；切换后相关实体会离线。未来若继续需要展示，使用私有访问或专门状态代理，不能直接公开无认证 Panel。
-- EFS 上的后续应用转录/音频仍可能增长，未引入自动删除家庭数据的策略；需确定保留期限。CloudWatch 应用日志保留 14 天。
-- 日志采用文本事件的 JSON 包装，并非端到端 OpenTelemetry trace。boot_id、日志流 Task ID 和业务消息里的关联 ID 可辅助排错，尚未统一成所有事件的结构化 trace 字段。
-- Engine 原本对第三方 SDK stdout/Python logging 的抑制仍保留，因此观测存在 SDK 内部细节盲区。awslogs non-blocking 在持续背压下可能丢日志；健康监测只检查进程和端点，不能发现所有线程卡死。
-- Secret 通过启动配置注入，新版本需要替换 Task 才会生效；新进程也不保证恢复全部对话上下文。现有源码中的麦克风隐私规则保持不变。
+- AWS testing verified EFS permissions, secret injection, image pulling, and real audio/video. Human listening quality, response playback, and end-to-end latency still need validation. A single task is not highly available.
+- The local Home Assistant dashboard still targets the local Engine, so relevant entities go offline after the cutover. A future dashboard should use private access or an authenticated status proxy; the unauthenticated Engine panel must not be exposed publicly.
+- Application transcripts and audio on EFS can continue growing. No automatic family-data deletion policy has been introduced. CloudWatch application logs retain 14 days.
+- JSON-wrapped text events do not form a full OpenTelemetry trace. Boot IDs, task IDs in log streams, and business correlation IDs help investigation, but the schema does not yet provide one trace context across every event.
+- Engine still suppresses substantial third-party SDK stdout and Python logging, leaving a blind spot. Non-blocking `awslogs` can lose records under sustained backpressure. Health checks cover processes and endpoints but cannot detect every stalled thread.
+- Secret changes require a task replacement. A new process also does not guarantee complete restoration of prior conversation context. Existing microphone-privacy behavior remains unchanged.
 
-配置设计参考：[Fargate 网络与 localhost](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html)、[ECS 健康检查](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/healthcheck.html)、[EFS Access Point IAM 限制](https://docs.aws.amazon.com/efs/latest/ug/access-points-iam-policy.html)。完整调研与引用见研究报告。
+The design uses AWS guidance for [Fargate task networking and localhost](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html), [ECS container health checks](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/healthcheck.html), and [EFS access-point IAM controls](https://docs.aws.amazon.com/efs/latest/ug/access-points-iam-policy.html). The architecture report contains the complete rationale and source index.
