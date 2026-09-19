@@ -1,3 +1,7 @@
+What below is perspective from tech side.
+
+What is going on from human side can be found in https://github.com/YeChen-coder/EBOBotToDigitalPet/blob/main/ShootToTheAWSCloud_en.md.
+
 # EBO Fargate Cloud Experiment
 
 [Chinese](README_zh.md) | [English](README.md)
