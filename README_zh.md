@@ -1,3 +1,7 @@
+下面的都是从技术角度上来说的一些东西，确实是 AI 总结的。
+
+然后从人话的角度上来说，这是一个开发日志，或者说各种踩坑日志、各种 complaining 的日志，可以在这里边找（因为 EboBotOnAWSCloud 这个项目其实是对另外一个项目的 migration，所以有些东西之前就一起写在那儿，没有分得那么开。他们最后其实还是给合在一起了，本地和云端的都可以直接在 Diagnostic Agent 的 dashboard 上去切。但我觉得用的时候不要搞得太繁琐，所以我发出来的时候，就把本地跟云端分得很开了。）https://github.com/YeChen-coder/EBOBotToDigitalPet/blob/main/ShootToTheAWSCloud_zh.md
+
 # EBO Fargate 云端实验项目
 
 [中文](README_zh.md) | [English](README.md)
